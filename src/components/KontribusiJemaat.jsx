@@ -14,6 +14,10 @@ const KontribusiJemaat = () => {
   // State Matriks Final
   const [dataTahunan, setDataTahunan] = useState([]);
 
+  // State Evaluasi Target Jemaat
+  const [targetDisplay, setTargetDisplay] = useState('');
+  const [targetValue, setTargetValue] = useState(0);
+
   const namaBulan = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
@@ -29,6 +33,8 @@ const KontribusiJemaat = () => {
     setKategoriTersedia([]);
     setKategoriPilih('');
     setDataTahunan([]);
+    setTargetDisplay(''); // Reset target saat tarik data baru
+    setTargetValue(0);
 
     try {
       const transaksiRef = collection(db, 'transaksi');
@@ -64,7 +70,6 @@ const KontribusiJemaat = () => {
 
       // Urutkan kategori sesuai abjad
       const sortedCategories = Array.from(uniqueCategories).sort();
-      
       setRawData(fetchedData);
       setKategoriTersedia(sortedCategories);
       setKategoriPilih(sortedCategories[0]); // Otomatis pilih kategori pertama
@@ -97,7 +102,7 @@ const KontribusiJemaat = () => {
           if (bulanIndex >= 0 && bulanIndex < 12) {
             if (jemaat.includes('koa')) rekap[bulanIndex].koa += nominal;
             else if (jemaat.includes('haususu')) rekap[bulanIndex].haususu += nominal;
-            else rekap[bulanIndex].koa += nominal;
+            else rekap[bulanIndex].koa += nominal; // Fallback default
           }
         }
       });
@@ -106,6 +111,23 @@ const KontribusiJemaat = () => {
     }
   }, [kategoriPilih, rawData]);
 
+  // Handle Input Target Keseluruhan dengan Format Ribuan
+  const handleTargetChange = (e) => {
+    // Hapus semua karakter kecuali angka
+    const rawValue = e.target.value.replace(/\D/g, '');
+    
+    if (!rawValue) {
+        setTargetDisplay('');
+        setTargetValue(0);
+        return;
+    }
+
+    const numValue = parseInt(rawValue, 10);
+    setTargetValue(numValue);
+    // Format ke string dengan titik (separator)
+    setTargetDisplay(new Intl.NumberFormat('id-ID').format(numValue));
+  };
+
   // Kalkulasi Grand Total
   const grandTotal = useMemo(() => {
     let totalKoa = 0; let totalHaususu = 0;
@@ -113,14 +135,18 @@ const KontribusiJemaat = () => {
     return { totalKoa, totalHaususu, totalSemua: totalKoa + totalHaususu };
   }, [dataTahunan]);
 
+  // Kalkulasi Evaluasi Beban
+  const targetPerJemaat = targetValue / 2;
+  const selisihKoa = grandTotal.totalKoa - targetPerJemaat;
+  const selisihHaususu = grandTotal.totalHaususu - targetPerJemaat;
+
   const formatRupiah = (angka) => new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 }).format(angka);
 
   // 3. FUNGSI SIMPAN ARSIP
   const handleSimpanArsip = async () => {
     if (dataTahunan.length === 0) return;
-    
     // Format ID unik: "2026_A19" agar tidak menimpa kategori lain di tahun yang sama
-    const idArsip = `${tahunPilih}_${kategoriPilih.replace(/\s+/g, '')}`; 
+    const idArsip = `${tahunPilih}_${kategoriPilih.replace(/\s+/g, '')}`;
 
     if (!window.confirm(`Simpan matriks ${kategoriPilih} tahun ${tahunPilih} ke database?`)) return;
 
@@ -132,6 +158,7 @@ const KontribusiJemaat = () => {
         total_koa: grandTotal.totalKoa,
         total_haususu: grandTotal.totalHaususu,
         grand_total: grandTotal.totalSemua,
+        target_keseluruhan: targetValue,
         waktu_simpan: new Date().toISOString()
       });
       alert('Arsip Kontribusi Tahunan berhasil disimpan!');
@@ -189,6 +216,35 @@ const KontribusiJemaat = () => {
             </tr>
           </tbody>
         </table>
+        
+        <br><br>
+        
+        <h3>EVALUASI BEBAN JEMAAT / WILAYAH (${kategoriPilih} - ${tahunPilih})</h3>
+        <table>
+          <thead style="background-color: #f3f4f6;">
+            <tr>
+              <th>Mata Jemaat</th>
+              <th>Beban Target (50%)</th>
+              <th>Total Realisasi</th>
+              <th>Selisih (Surplus / Kurang)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Imanuel Koa</td>
+              <td align="right">${targetPerJemaat}</td>
+              <td align="right">${grandTotal.totalKoa}</td>
+              <td align="right">${selisihKoa}</td>
+            </tr>
+            <tr>
+              <td>Syalom Haususu</td>
+              <td align="right">${targetPerJemaat}</td>
+              <td align="right">${grandTotal.totalHaususu}</td>
+              <td align="right">${selisihHaususu}</td>
+            </tr>
+          </tbody>
+        </table>
+
       </body></html>
     `;
 
@@ -264,69 +320,131 @@ const KontribusiJemaat = () => {
           </div>
         )}
 
-        {/* TABEL MATRIKS 12 BULAN */}
+        {/* AREA KONTEN: TABEL & PANEL EVALUASI */}
         {dataTahunan.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm border border-slate-300 overflow-hidden">
-            <div className="bg-white border-b border-slate-300 p-4">
-              <h2 className="text-lg font-bold text-slate-800">Matriks {kategoriPilih} - Tahun {tahunPilih}</h2>
-            </div>
+          <div className="space-y-6">
             
-            <div className="overflow-x-auto p-4">
-              <table className="w-full text-left whitespace-nowrap text-sm border-collapse">
-                <thead className="bg-slate-100 text-slate-800">
-                  <tr>
-                    <th className="p-3 border border-slate-300 font-bold text-center w-12" rowSpan="2">No</th>
-                    <th className="p-3 border border-slate-300 font-bold text-center w-40" rowSpan="2">Bulan</th>
-                    <th className="p-2 border border-slate-300 font-bold text-center" colSpan="2">Mata Jemaat</th>
-                    <th className="p-3 border border-slate-300 font-bold text-center w-48" rowSpan="2">Total Bulanan</th>
-                  </tr>
-                  <tr>
-                    <th className="p-2 border border-slate-300 font-semibold text-center w-48">Imanuel Koa</th>
-                    <th className="p-2 border border-slate-300 font-semibold text-center w-48">Syalom Haususu</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dataTahunan.map((item, index) => {
-                    const totalBulan = item.koa + item.haususu;
-                    const isAdaData = totalBulan > 0;
+            {/* TABEL MATRIKS 12 BULAN */}
+            <div className="bg-white rounded-lg shadow-sm border border-slate-300 overflow-hidden w-full">
+                <div className="bg-white border-b border-slate-300 p-4">
+                <h2 className="text-lg font-bold text-slate-800">Matriks {kategoriPilih} - Tahun {tahunPilih}</h2>
+                </div>
+                
+                <div className="overflow-x-auto p-4">
+                <table className="w-full text-left whitespace-nowrap text-sm border-collapse">
+                    <thead className="bg-slate-100 text-slate-800">
+                    <tr>
+                        <th className="p-3 border border-slate-300 font-bold text-center w-12" rowSpan="2">No</th>
+                        <th className="p-3 border border-slate-300 font-bold text-center w-40" rowSpan="2">Bulan</th>
+                        <th className="p-2 border border-slate-300 font-bold text-center" colSpan="2">Mata Jemaat</th>
+                        <th className="p-3 border border-slate-300 font-bold text-center w-48" rowSpan="2">Total Bulanan</th>
+                    </tr>
+                    <tr>
+                        <th className="p-2 border border-slate-300 font-semibold text-center w-48">Imanuel Koa</th>
+                        <th className="p-2 border border-slate-300 font-semibold text-center w-48">Syalom Haususu</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {dataTahunan.map((item, index) => {
+                        const totalBulan = item.koa + item.haususu;
+                        const isAdaData = totalBulan > 0;
+                        
+                        return (
+                        <tr key={index} className={`hover:bg-slate-50 transition-colors ${isAdaData ? 'text-slate-800' : 'text-slate-400'}`}>
+                            <td className="p-2 border border-slate-300 text-center">{index + 1}</td>
+                            <td className="p-2 border border-slate-300 font-medium">{item.nama}</td>
+                            
+                            <td className="p-2 border border-slate-300 text-right">
+                            {item.koa > 0 ? formatRupiah(item.koa) : '-'}
+                            </td>
+                            <td className="p-2 border border-slate-300 text-right">
+                            {item.haususu > 0 ? formatRupiah(item.haususu) : '-'}
+                            </td>
+                            
+                            <td className={`p-2 border border-slate-300 text-right font-bold ${isAdaData ? 'text-blue-600' : ''}`}>
+                            {isAdaData ? formatRupiah(totalBulan) : '-'}
+                            </td>
+                        </tr>
+                        );
+                    })}
                     
-                    return (
-                      <tr key={index} className={`hover:bg-slate-50 transition-colors ${isAdaData ? 'text-slate-800' : 'text-slate-400'}`}>
-                        <td className="p-2 border border-slate-300 text-center">{index + 1}</td>
-                        <td className="p-2 border border-slate-300 font-medium">{item.nama}</td>
-                        
-                        <td className="p-2 border border-slate-300 text-right">
-                          {item.koa > 0 ? formatRupiah(item.koa) : '-'}
+                    {/* BARIS TOTAL KESELURUHAN SETAHUN */}
+                    <tr className="bg-slate-100 text-base">
+                        <td className="p-3 border border-slate-300 text-right font-bold uppercase tracking-wider" colSpan="2">
+                        Total Kontribusi Tahunan
                         </td>
-                        <td className="p-2 border border-slate-300 text-right">
-                          {item.haususu > 0 ? formatRupiah(item.haususu) : '-'}
+                        <td className="p-3 border border-slate-300 text-right font-bold text-indigo-700">
+                        {grandTotal.totalKoa > 0 ? formatRupiah(grandTotal.totalKoa) : '-'}
                         </td>
-                        
-                        <td className={`p-2 border border-slate-300 text-right font-bold ${isAdaData ? 'text-blue-600' : ''}`}>
-                          {isAdaData ? formatRupiah(totalBulan) : '-'}
+                        <td className="p-3 border border-slate-300 text-right font-bold text-purple-700">
+                        {grandTotal.totalHaususu > 0 ? formatRupiah(grandTotal.totalHaususu) : '-'}
                         </td>
-                      </tr>
-                    );
-                  })}
-                  
-                  {/* BARIS TOTAL KESELURUHAN SETAHUN */}
-                  <tr className="bg-slate-100 text-base">
-                    <td className="p-3 border border-slate-300 text-right font-bold uppercase tracking-wider" colSpan="2">
-                      Total Kontribusi Tahunan
-                    </td>
-                    <td className="p-3 border border-slate-300 text-right font-bold text-indigo-700">
-                      {grandTotal.totalKoa > 0 ? formatRupiah(grandTotal.totalKoa) : '-'}
-                    </td>
-                    <td className="p-3 border border-slate-300 text-right font-bold text-purple-700">
-                      {grandTotal.totalHaususu > 0 ? formatRupiah(grandTotal.totalHaususu) : '-'}
-                    </td>
-                    <td className="p-3 border border-slate-300 text-right font-black text-slate-800 bg-slate-200">
-                      {formatRupiah(grandTotal.totalSemua)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                        <td className="p-3 border border-slate-300 text-right font-black text-slate-800 bg-slate-200">
+                        {formatRupiah(grandTotal.totalSemua)}
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+                </div>
             </div>
+
+            {/* PANEL EVALUASI TARGET BARU (LEBAR PENUH / FULL WIDTH) */}
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-300 w-full">
+                <h3 className="font-bold text-indigo-900 mb-5 border-b border-slate-200 pb-3 text-lg">
+                    Evaluasi Beban Jemaat/Wilayah - Kategori {kategoriPilih}
+                </h3>
+                
+                {/* Kotak Input Target */}
+                <div className="mb-6 bg-slate-50 p-4 rounded-md border border-slate-200 inline-block w-full md:w-1/2">
+                    <label className="block text-sm font-bold mb-2 text-slate-700">Target Keseluruhan (Rp)</label>
+                    <input
+                        type="text"
+                        value={targetDisplay}
+                        onChange={handleTargetChange}
+                        placeholder="Cth: 1.000.000"
+                        className="w-full border border-slate-300 rounded-md p-3 outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-lg font-semibold shadow-inner"
+                    />
+                    <p className="text-xs text-slate-500 mt-2">*Angka akan diformat dengan titik otomatis saat Anda mengetik.</p>
+                </div>
+                
+                {/* Kotak Evaluasi Split 50:50 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* KOTAK EVALUASI KOA */}
+                    <div className="p-5 border border-slate-200 rounded-lg bg-slate-50 shadow-sm">
+                        <div className="font-bold text-slate-800 text-center border-b border-slate-200 pb-2 mb-4 text-lg">Imanuel Koa</div>
+                        <div className="flex justify-between text-base mb-2">
+                            <span className="text-slate-600">Beban (50%):</span>
+                            <span className="font-bold text-slate-800">{formatRupiah(targetPerJemaat)}</span>
+                        </div>
+                        <div className="flex justify-between text-base mb-4">
+                            <span className="text-slate-600">Realisasi:</span>
+                            <span className="font-bold text-indigo-600">{formatRupiah(grandTotal.totalKoa)}</span>
+                        </div>
+                        <div className={`p-3 rounded-md text-center text-sm font-bold uppercase tracking-wide ${selisihKoa >= 0 ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-rose-100 text-rose-700 border border-rose-200'}`}>
+                            {selisihKoa >= 0 ? 'Surplus / Lunas: ' : 'Kurang: '}
+                            {formatRupiah(Math.abs(selisihKoa))}
+                        </div>
+                    </div>
+
+                    {/* KOTAK EVALUASI HAUSUSU */}
+                    <div className="p-5 border border-slate-200 rounded-lg bg-slate-50 shadow-sm">
+                        <div className="font-bold text-slate-800 text-center border-b border-slate-200 pb-2 mb-4 text-lg">Syalom Haususu</div>
+                        <div className="flex justify-between text-base mb-2">
+                            <span className="text-slate-600">Beban (50%):</span>
+                            <span className="font-bold text-slate-800">{formatRupiah(targetPerJemaat)}</span>
+                        </div>
+                        <div className="flex justify-between text-base mb-4">
+                            <span className="text-slate-600">Realisasi:</span>
+                            <span className="font-bold text-indigo-600">{formatRupiah(grandTotal.totalHaususu)}</span>
+                        </div>
+                        <div className={`p-3 rounded-md text-center text-sm font-bold uppercase tracking-wide ${selisihHaususu >= 0 ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-rose-100 text-rose-700 border border-rose-200'}`}>
+                            {selisihHaususu >= 0 ? 'Surplus / Lunas: ' : 'Kurang: '}
+                            {formatRupiah(Math.abs(selisihHaususu))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
           </div>
         )}
       </div>

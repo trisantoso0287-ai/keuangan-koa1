@@ -84,7 +84,7 @@ function App() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-blue-900 leading-tight">Keuangan Jemaat</h1>
-            <p className="text-sm font-semibold text-slate-500">Mata Jemaat Koa 1</p>
+            <p className="text-sm font-semibold text-slate-500">Jemaat Koa 1</p>
           </div>
         </div>
         
