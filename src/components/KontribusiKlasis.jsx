@@ -27,6 +27,7 @@ const KontribusiKlasis = () => {
   // ==========================================
   const [targetDisplay, setTargetDisplay] = useState('');
   const [targetValue, setTargetValue] = useState(0);
+  const [isTargetLocked, setIsTargetLocked] = useState(false);
 
   const namaBulan = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -45,8 +46,7 @@ const KontribusiKlasis = () => {
     setRawPendapatan([]); setKatPendapatanTersedia([]); setKatPendapatanPilih(''); setMatriksPendapatan([]);
     setRawPengeluaran([]); setKatPengeluaranTersedia([]); setKatPengeluaranPilih(''); setMatriksPengeluaran([]);
     
-    setTargetDisplay(''); // Reset target saat ganti tahun
-    setTargetValue(0);
+    // Target Keseluruhan sengaja tidak di-reset agar tersimpan saat tarik data ulang
 
     try {
       const transaksiRef = collection(db, 'transaksi');
@@ -148,7 +148,6 @@ const KontribusiKlasis = () => {
 
   // Handle Input Target Keseluruhan dengan Format Ribuan
   const handleTargetChange = (e) => {
-    // Hapus semua karakter kecuali angka
     const rawValue = e.target.value.replace(/\D/g, '');
     
     if (!rawValue) {
@@ -159,7 +158,6 @@ const KontribusiKlasis = () => {
 
     const numValue = parseInt(rawValue, 10);
     setTargetValue(numValue);
-    // Format ke string dengan titik (separator)
     setTargetDisplay(new Intl.NumberFormat('id-ID').format(numValue));
   };
 
@@ -327,7 +325,7 @@ const KontribusiKlasis = () => {
           </form>
         </div>
 
-        {/* AREA KOMPARASI (MUNCUL JIKA ADA DATA) */}
+        {/* AREA KOMPARASI */}
         {(katPendapatanTersedia.length > 0 || katPengeluaranTersedia.length > 0) && (
           <div className="space-y-6">
               
@@ -336,8 +334,6 @@ const KontribusiKlasis = () => {
                 
                 {/* KOLOM KIRI: PENDAPATAN */}
                 <div className="space-y-4">
-                
-                    {/* FILTER KATEGORI PENDAPATAN */}
                     <div className="bg-indigo-50 p-4 rounded-lg shadow-sm border border-indigo-200">
                         <label className="block text-sm font-bold mb-1 text-indigo-900">Filter Kategori Pendapatan</label>
                         <select value={katPendapatanPilih} onChange={(e) => setKatPendapatanPilih(e.target.value)} className="w-full border border-indigo-300 rounded-md p-2 outline-none bg-white font-medium text-slate-800">
@@ -345,7 +341,6 @@ const KontribusiKlasis = () => {
                         </select>
                     </div>
 
-                    {/* TABEL MATRIKS PENDAPATAN */}
                     <div className="bg-white rounded-lg shadow-sm border border-slate-300 overflow-hidden">
                         <div className="bg-indigo-600 p-3"><h2 className="text-white font-bold text-center">MATRIKS PENDAPATAN (REALISASI)</h2></div>
                         <div className="overflow-x-auto">
@@ -369,8 +364,6 @@ const KontribusiKlasis = () => {
                                 </td>
                                 </tr>
                             ))}
-                            
-                            {/* PECAH KOLOM TOTAL */}
                             <tr className="bg-indigo-100 font-bold text-indigo-900">
                                 <td className="p-3 text-right">TOTAL KONTRIBUSI</td>
                                 <td className="p-3 text-right">{formatRupiah(totalKoaTahun)}</td>
@@ -385,7 +378,6 @@ const KontribusiKlasis = () => {
 
                 {/* KOLOM KANAN: PENGELUARAN */}
                 <div className="space-y-4">
-                    {/* FILTER KATEGORI PENGELUARAN */}
                     <div className="bg-red-50 p-4 rounded-lg shadow-sm border border-red-200">
                         <label className="block text-sm font-bold mb-1 text-red-900">Filter Kategori Pengeluaran (Realisasi)</label>
                         <select value={katPengeluaranPilih} onChange={(e) => setKatPengeluaranPilih(e.target.value)} className="w-full border border-red-300 rounded-md p-2 outline-none bg-white font-medium text-slate-800">
@@ -393,7 +385,6 @@ const KontribusiKlasis = () => {
                         </select>
                     </div>
 
-                    {/* TABEL MATRIKS PENGELUARAN */}
                     <div className="bg-white rounded-lg shadow-sm border border-slate-300 overflow-hidden">
                         <div className="bg-red-600 p-3"><h2 className="text-white font-bold text-center">MATRIKS PENGELUARAN</h2></div>
                         <div className="overflow-x-auto">
@@ -424,28 +415,37 @@ const KontribusiKlasis = () => {
                 </div>
             </div>
 
-            {/* PANEL EVALUASI TARGET (LEBAR PENUH / FULL WIDTH DI BAWAH MATRIKS) */}
+            {/* PANEL EVALUASI TARGET KESELURUHAN */}
             <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-300 w-full mt-2">
                 <h3 className="font-bold text-indigo-900 mb-5 border-b border-slate-200 pb-3 text-lg">
                     Evaluasi Beban Klasis/Wilayah (Target Komparasi)
                 </h3>
                 
-                {/* Kotak Input Target */}
-                <div className="mb-6 bg-slate-50 p-4 rounded-md border border-slate-200 inline-block w-full md:w-1/2">
+                <div className="mb-6 bg-slate-50 p-4 rounded-md border border-slate-200 inline-block w-full md:w-2/3 lg:w-1/2">
                     <label className="block text-sm font-bold mb-2 text-slate-700">Target Keseluruhan (Rp)</label>
-                    <input
-                        type="text"
-                        value={targetDisplay}
-                        onChange={handleTargetChange}
-                        placeholder="Cth: 1.000.000"
-                        className="w-full border border-slate-300 rounded-md p-3 outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-lg font-semibold shadow-inner"
-                    />
-                    <p className="text-xs text-slate-500 mt-2">*Angka akan diformat dengan titik otomatis saat Anda mengetik.</p>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={targetDisplay}
+                            onChange={handleTargetChange}
+                            disabled={isTargetLocked}
+                            placeholder="Cth: 1.000.000"
+                            className={`w-full border border-slate-300 rounded-md p-3 outline-none focus:ring-2 focus:ring-indigo-500 text-lg font-semibold shadow-inner transition-colors ${isTargetLocked ? 'bg-slate-200 text-slate-600 cursor-not-allowed' : 'bg-white text-slate-800'}`}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setIsTargetLocked(!isTargetLocked)}
+                            className={`px-6 py-3 rounded-md font-bold text-white shadow-sm transition whitespace-nowrap ${isTargetLocked ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+                        >
+                            {isTargetLocked ? 'Edit' : 'Simpan'}
+                        </button>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2">
+                        {isTargetLocked ? '*Target dikunci agar nilainya tidak hilang saat Anda melakukan Tarik Data.' : '*Ketik nominal lalu klik Simpan untuk mengunci target evaluasi.'}
+                    </p>
                 </div>
                 
-                {/* Kotak Evaluasi Split 50:50 */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {/* KOTAK EVALUASI KOA */}
                     <div className="p-5 border border-slate-200 rounded-lg bg-slate-50 shadow-sm">
                         <div className="font-bold text-slate-800 text-center border-b border-slate-200 pb-2 mb-4 text-lg">Imanuel Koa</div>
                         <div className="flex justify-between text-base mb-2">
@@ -462,7 +462,6 @@ const KontribusiKlasis = () => {
                         </div>
                     </div>
 
-                    {/* KOTAK EVALUASI HAUSUSU */}
                     <div className="p-5 border border-slate-200 rounded-lg bg-slate-50 shadow-sm">
                         <div className="font-bold text-slate-800 text-center border-b border-slate-200 pb-2 mb-4 text-lg">Syalom Haususu</div>
                         <div className="flex justify-between text-base mb-2">
