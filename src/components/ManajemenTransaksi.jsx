@@ -3,6 +3,22 @@ import TransactionForm from './TransactionForm';
 import { collection, onSnapshot, doc, deleteDoc, query, addDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
+// Helper: Mendapatkan format YYYY-MM untuk bulan depan
+const getNextMonthStr = (yyyy_mm) => {
+  if (!yyyy_mm || yyyy_mm === "Tanggal Tidak Valid") return "";
+  const [year, month] = yyyy_mm.split('-');
+  const date = new Date(year, parseInt(month), 1); // parseInt(month) otomatis menunjuk ke bulan depan di JS
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
+
+// Helper: Mendapatkan nama bulan singkat (Jan, Feb, Mar)
+const getShortMonthName = (yyyy_mm) => {
+  if (!yyyy_mm || yyyy_mm === "Tanggal Tidak Valid") return "";
+  const [year, month] = yyyy_mm.split('-');
+  const date = new Date(year, parseInt(month) - 1, 1);
+  return date.toLocaleDateString('id-ID', { month: 'short' });
+};
+
 const ManajemenTransaksi = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedTrx, setSelectedTrx] = useState(null);
@@ -56,14 +72,11 @@ const ManajemenTransaksi = () => {
     }
   }, [uniqueMonths, activeMonth]);
 
-  // Logika Tombol << dan >>
   const currentIndex = uniqueMonths.indexOf(activeMonth);
   const handlePrevMonth = () => {
-    // Mundur ke bulan sebelumnya (karena descending, index bertambah)
     if (currentIndex < uniqueMonths.length - 1) setActiveMonth(uniqueMonths[currentIndex + 1]);
   };
   const handleNextMonth = () => {
-    // Maju ke bulan berikutnya (karena descending, index berkurang)
     if (currentIndex > 0) setActiveMonth(uniqueMonths[currentIndex - 1]);
   };
 
@@ -73,36 +86,91 @@ const ManajemenTransaksi = () => {
   const displayedTransactions = useMemo(() => {
     return riwayatTransaksi
       .filter(trx => {
-        // 1. Filter Bulan
         const date = new Date(trx.tanggal);
         const trxMonth = isNaN(date.getTime()) ? "Tanggal Tidak Valid" : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         if (trxMonth !== activeMonth) return false;
-
-        // 2. Filter Jenis (Pendapatan/Pengeluaran)
         if (filterJenis && trx.jenis !== filterJenis) return false;
-
-        // 3. Filter Mata Jemaat
         const jemaat = (trx.jemaat || '').toLowerCase();
         if (filterJemaat && !jemaat.includes(filterJemaat.toLowerCase())) return false;
-
-        // 4. Filter Awalan Kategori (A, C, D, E)
         const kategori = (trx.kategori || '').toUpperCase();
         if (filterKategori && !kategori.startsWith(filterKategori)) return false;
-
         return true;
       })
-      // Urutkan tanggal terbaru di atas, dan jika tanggal sama, urutkan berdasarkan waktu input terbaru
       .sort((a, b) => {
         const dateDiff = new Date(b.tanggal) - new Date(a.tanggal);
         if (dateDiff !== 0) return dateDiff;
-        
-        // Fallback ke waktuUpdate jika ada transaksi di tanggal yang sama
         const timeA = a.waktuUpdate?.seconds ? a.waktuUpdate.seconds : (new Date(a.waktuUpdate).getTime() || 0);
         const timeB = b.waktuUpdate?.seconds ? b.waktuUpdate.seconds : (new Date(b.waktuUpdate).getTime() || 0);
-        
         return timeB - timeA;
       });
   }, [riwayatTransaksi, activeMonth, filterJenis, filterJemaat, filterKategori]);
+
+  // ==========================================
+  // LOGIKA KALKULASI RINGKASAN KHUSUS (TERIMA BULAN INI, KELUAR BULAN DEPAN)
+  // ==========================================
+  const ringkasanKeuangan = useMemo(() => {
+    const nextMonth = getNextMonthStr(activeMonth);
+    
+    // Tentukan bulan terlama di database (karena uniqueMonths descending, ambil index terakhir)
+    let earliestMonth = activeMonth;
+    if (uniqueMonths.length > 0) {
+      earliestMonth = uniqueMonths[uniqueMonths.length - 1];
+    }
+
+    let pemaBulanIni = 0;
+    let pengeBulanDepan = 0;
+    
+    let totalPemaKumulatif = 0;
+    let totalPengeKumulatif = 0;
+
+    riwayatTransaksi.forEach(trx => {
+      const date = new Date(trx.tanggal);
+      const trxMonth = isNaN(date.getTime()) ? "Tanggal Tidak Valid" : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const nominal = Number(trx.nominal) || 0;
+
+      // Evaluasi filter
+      let matchFilter = true;
+      if (filterJenis && trx.jenis !== filterJenis) matchFilter = false;
+      const jemaat = (trx.jemaat || '').toLowerCase();
+      if (filterJemaat && !jemaat.includes(filterJemaat.toLowerCase())) matchFilter = false;
+      const kategori = (trx.kategori || '').toUpperCase();
+      if (filterKategori && !kategori.startsWith(filterKategori)) matchFilter = false;
+
+      if (matchFilter && trxMonth !== "Tanggal Tidak Valid") {
+        
+        // 1. Terima Bulan Ini
+        if (trxMonth === activeMonth && trx.jenis === 'pendapatan') pemaBulanIni += nominal;
+        
+        // 2. Keluar Bulan Depan (Penyetoran ke Klasis dsb)
+        if (trxMonth === nextMonth && trx.jenis === 'pengeluaran') pengeBulanDepan += nominal;
+
+        // 3. Saldo Berjalan (Terima s/d Bulan Aktif dikurangi Keluar s/d Bulan Depan)
+        if (trxMonth <= activeMonth && trx.jenis === 'pendapatan') totalPemaKumulatif += nominal;
+        if (trxMonth <= nextMonth && trx.jenis === 'pengeluaran') totalPengeKumulatif += nominal;
+      }
+    });
+
+    // Formatting Text Judul
+    const actShort = getShortMonthName(activeMonth);
+    const nxtShort = getShortMonthName(nextMonth);
+    const earShort = getShortMonthName(earliestMonth);
+    
+    const sisa = pemaBulanIni - pengeBulanDepan;
+    const saldoBerjalan = totalPemaKumulatif - totalPengeKumulatif;
+
+    return {
+      pemaBulanIni,
+      pengeBulanDepan,
+      sisa,
+      saldoBerjalan,
+      labelPema: `Terima (${actShort})`,
+      labelPenge: `Keluar (${nxtShort})`,
+      labelSisa: `Perhitungan Terima ${actShort} & Keluar ${nxtShort}`,
+      labelKumulatif: earliestMonth === activeMonth 
+        ? `Saldo Berjalan (${actShort})` 
+        : `Saldo Berjalan (${earShort} - ${actShort})`
+    };
+  }, [riwayatTransaksi, activeMonth, filterJenis, filterJemaat, filterKategori, uniqueMonths]);
 
   const formatTanggalIndo = (tanggalString) => {
     const date = new Date(tanggalString);
@@ -140,12 +208,12 @@ const ManajemenTransaksi = () => {
           kategori: cols[3].trim(),
           nominal: nominalMurni,
           keterangan: cols[5] ? cols[5].trim() : '',
-          waktuUpdate: new Date() // Pastikan field ini selalu terkirim
+          waktuUpdate: new Date()
         };
         try {
           await addDoc(collection(db, "transaksi"), dataBaru);
           berhasil++;
-        } catch (error) { console.error("Error import row:", error); }
+        } catch (error) { console.error("Error import:", error); }
       }
     }
     alert(`IMPOR SELESAI: ${berhasil} data transaksi berhasil diintegrasikan ke database!`);
@@ -221,8 +289,6 @@ const ManajemenTransaksi = () => {
 
       {/* FILTER & NAVIGASI BULAN */}
       <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 space-y-4">
-        
-        {/* Navigasi Bulan */}
         <div className="flex justify-between items-center bg-white p-2 rounded-md shadow-sm border border-slate-200">
           <button 
             onClick={handlePrevMonth} 
@@ -243,20 +309,17 @@ const ManajemenTransaksi = () => {
           </button>
         </div>
 
-        {/* Baris Filter */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <select value={filterJenis} onChange={(e) => setFilterJenis(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 cursor-pointer">
             <option value="">Semua Jenis (Masuk & Keluar)</option>
             <option value="pendapatan">Hanya Pendapatan</option>
             <option value="pengeluaran">Hanya Pengeluaran</option>
           </select>
-          
           <select value={filterJemaat} onChange={(e) => setFilterJemaat(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 cursor-pointer">
             <option value="">Semua Wilayah / Jemaat</option>
             <option value="koa">Imanuel Koa</option>
             <option value="haususu">Syalom Haususu</option>
           </select>
-
           <select value={filterKategori} onChange={(e) => setFilterKategori(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 cursor-pointer">
             <option value="">Semua Kategori (A, C, D, E)</option>
             <option value="A">Kategori A - (Penerimaan)</option>
@@ -265,6 +328,43 @@ const ManajemenTransaksi = () => {
             <option value="E">Kategori E - (Lain-lain)</option>
           </select>
         </div>
+      </div>
+
+      {/* 4 KOTAK RINGKASAN KHUSUS (Penerimaan Bulan Ini VS Pengeluaran Bulan Depan) */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        
+        {/* Kotak 1: Penerimaan Bulan Ini */}
+        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg flex flex-col justify-center shadow-sm">
+          <span className="text-xs md:text-sm font-bold text-emerald-700 mb-1">{ringkasanKeuangan.labelPema}</span>
+          <span className="text-xl md:text-2xl font-black text-emerald-600">Rp {ringkasanKeuangan.pemaBulanIni.toLocaleString('id-ID')}</span>
+        </div>
+        
+        {/* Kotak 2: Pengeluaran Bulan Depan */}
+        <div className="bg-red-50 border border-red-200 p-4 rounded-lg flex flex-col justify-center shadow-sm">
+          <span className="text-xs md:text-sm font-bold text-red-700 mb-1">{ringkasanKeuangan.labelPenge}</span>
+          <span className="text-xl md:text-2xl font-black text-red-600">Rp {ringkasanKeuangan.pengeBulanDepan.toLocaleString('id-ID')}</span>
+        </div>
+        
+        {/* Kotak 3: Selisih (Sisa) */}
+        <div className={`border p-4 rounded-lg flex flex-col justify-center shadow-sm ${ringkasanKeuangan.sisa < 0 ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-200'}`}>
+          <span className={`text-xs md:text-sm font-bold leading-tight mb-1 ${ringkasanKeuangan.sisa < 0 ? 'text-orange-700' : 'text-blue-700'}`}>
+            {ringkasanKeuangan.labelSisa}
+          </span>
+          <span className={`text-xl md:text-2xl font-black ${ringkasanKeuangan.sisa < 0 ? 'text-orange-600' : 'text-blue-600'}`}>
+            Rp {ringkasanKeuangan.sisa.toLocaleString('id-ID')}
+          </span>
+        </div>
+
+        {/* Kotak 4: Saldo Berjalan (Kumulatif) */}
+        <div className={`border p-4 rounded-lg flex flex-col justify-center shadow-sm ${ringkasanKeuangan.saldoBerjalan < 0 ? 'bg-rose-50 border-rose-300' : 'bg-indigo-50 border-indigo-200'}`}>
+          <span className={`text-xs md:text-sm font-bold leading-tight mb-1 ${ringkasanKeuangan.saldoBerjalan < 0 ? 'text-rose-700' : 'text-indigo-700'}`}>
+            {ringkasanKeuangan.labelKumulatif}
+          </span>
+          <span className={`text-xl md:text-2xl font-black ${ringkasanKeuangan.saldoBerjalan < 0 ? 'text-rose-600' : 'text-indigo-600'}`}>
+            Rp {ringkasanKeuangan.saldoBerjalan.toLocaleString('id-ID')}
+          </span>
+        </div>
+
       </div>
 
       {/* TAMPILAN DESKTOP (TABEL) */}
@@ -348,22 +448,15 @@ const ManajemenTransaksi = () => {
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
       </button>
 
-      {/* MODAL: AKSI MOBILE (MUNCUL SAAT KARTU DIKLIK) */}
+      {/* MODAL: AKSI MOBILE */}
       {mobileTrx && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-end md:items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-t-2xl md:rounded-xl shadow-xl flex flex-col animate-fade-in p-5">
             <h3 className="font-bold text-slate-800 mb-1 text-center">Opsi Transaksi</h3>
             <p className="text-xs text-slate-500 text-center mb-6">{mobileTrx.kategori} ({mobileTrx.nominal.toLocaleString('id-ID')})</p>
-            
-            <button onClick={() => { setSelectedTrx(mobileTrx); setIsFormOpen(true); setMobileTrx(null); }} className="w-full bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold py-3 rounded-lg mb-3 transition-colors flex items-center justify-center gap-2">
-              ✏️ Edit Data
-            </button>
-            <button onClick={() => { handleHapusTransaksi(mobileTrx.id); setMobileTrx(null); }} className="w-full bg-red-50 text-red-700 hover:bg-red-100 font-bold py-3 rounded-lg mb-3 transition-colors flex items-center justify-center gap-2">
-              🗑️ Hapus Data
-            </button>
-            <button onClick={() => setMobileTrx(null)} className="w-full bg-slate-100 text-slate-600 font-bold py-3 rounded-lg hover:bg-slate-200 transition-colors">
-              Batal
-            </button>
+            <button onClick={() => { setSelectedTrx(mobileTrx); setIsFormOpen(true); setMobileTrx(null); }} className="w-full bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold py-3 rounded-lg mb-3 transition-colors flex items-center justify-center gap-2">✏️ Edit Data</button>
+            <button onClick={() => { handleHapusTransaksi(mobileTrx.id); setMobileTrx(null); }} className="w-full bg-red-50 text-red-700 hover:bg-red-100 font-bold py-3 rounded-lg mb-3 transition-colors flex items-center justify-center gap-2">🗑️ Hapus Data</button>
+            <button onClick={() => setMobileTrx(null)} className="w-full bg-slate-100 text-slate-600 font-bold py-3 rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
           </div>
         </div>
       )}

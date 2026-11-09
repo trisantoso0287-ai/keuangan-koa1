@@ -32,7 +32,6 @@ function BukuKasUmum() {
           saldoBerjalan -= jumlah;
         }
 
-        // PERUBAHAN: Menarik data dari field "kategori"
         const rawKategori = data.kategori || data.keterangan || '';
         const cleanKategori = String(rawKategori).replace(/^[A-Za-z0-9]+\s*-\s*/, '').trim();
         const jemaat = data.jemaat || data.namaJemaat || data.penyetor || '';
@@ -64,9 +63,26 @@ function BukuKasUmum() {
   };
 
   const namaBulanCetak = new Date(filterBulan + '-01').toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
-  const transaksiTampil = semuaTransaksi.filter(t => t.tanggal && t.tanggal.startsWith(filterBulan));
+  
+  // Pisahkan transaksi bulan aktif dan hitung saldo bulan sebelumnya
+  let saldoBulanSebelumnya = 0;
+  const transaksiBulanIni = [];
+  
+  semuaTransaksi.forEach(t => {
+    if (!t.tanggal) return;
+    const tBulan = t.tanggal.substring(0, 7); // Ambil YYYY-MM
+    
+    if (tBulan < filterBulan) {
+      // Akumulasi saldo historis
+      saldoBulanSebelumnya += t.masuk;
+      saldoBulanSebelumnya -= t.keluar;
+    } else if (tBulan === filterBulan) {
+      // Masukkan ke array bulan ini
+      transaksiBulanIni.push(t);
+    }
+  });
 
-  const ringkasanBulanIni = transaksiTampil.reduce((acc, curr) => {
+  const ringkasanBulanIni = transaksiBulanIni.reduce((acc, curr) => {
     acc.masuk += curr.masuk;
     acc.keluar += curr.keluar;
     return acc;
@@ -121,10 +137,20 @@ function BukuKasUmum() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
-                {transaksiTampil.length === 0 ? (
+                
+                {/* BARIS SALDO BULAN SEBELUMNYA */}
+                <tr className="bg-blue-50/30">
+                  <td className="p-4 font-medium text-slate-500">-</td>
+                  <td className="p-4 font-bold text-blue-900">Saldo Bulan Sebelumnya</td>
+                  <td className="p-4 text-right">-</td>
+                  <td className="p-4 text-right">-</td>
+                  <td className="p-4 text-right font-bold text-blue-900 bg-slate-50/50">{formatRupiah(saldoBulanSebelumnya)}</td>
+                </tr>
+
+                {transaksiBulanIni.length === 0 ? (
                   <tr><td colSpan="5" className="text-center p-8 text-slate-400">Tidak ada transaksi di bulan ini.</td></tr>
                 ) : (
-                  transaksiTampil.map((item) => (
+                  transaksiBulanIni.map((item) => (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-4 font-medium text-slate-600">{formatTanggalIndo(item.tanggal)}</td>
                       <td className="p-4 text-slate-800">{item.uraianTampil}</td>
@@ -182,17 +208,32 @@ function BukuKasUmum() {
             </tr>
           </thead>
           <tbody>
-            {transaksiTampil.map((item, index) => (
+            
+            {/* BARIS SALDO BULAN SEBELUMNYA (CETAK) */}
+            <tr>
+               <td className="border border-black py-1 px-1 text-center"></td>
+               <td className="border border-black py-1 px-1 text-center">-</td>
+               <td className="border border-black py-1 px-1 text-center">-</td>
+               <td className="border border-black py-1 px-1 text-center">-</td>
+               <td className="border border-black py-1 px-1 text-center">-</td>
+               <td className="border border-black py-1 px-1 text-center">-</td>
+               <td className="border border-black py-1 px-1 font-bold">Saldo Bulan Sebelumnya</td>
+               <td className="border border-black py-1 px-1 text-right">-</td>
+               <td className="border border-black py-1 px-1 text-right">-</td>
+               <td className="border border-black py-1 px-1 text-right font-bold">{formatRupiah(saldoBulanSebelumnya)}</td>
+            </tr>
+
+            {transaksiBulanIni.map((item, index) => (
               <tr key={item.id}>
                 <td className="border border-black py-1 px-1 text-center">{index + 1}</td>
-                <td className="border border-black py-1 px-1">{formatTanggalIndo(item.tanggal)}</td>
-                <td className="border border-black py-1 px-1 text-center">{item.masuk > 0 ? (item.noBukti || '-') : ''}</td>
-                <td className="border border-black py-1 px-1 text-center">{item.keluar > 0 ? (item.noBukti || '-') : ''}</td>
-                <td className="border border-black py-1 px-1 text-center">{item.masuk > 0 ? (item.kodeMA || '-') : ''}</td>
-                <td className="border border-black py-1 px-1 text-center">{item.keluar > 0 ? (item.kodeMA || '-') : ''}</td>
+                <td className="border border-black py-1 px-1 text-center">{formatTanggalIndo(item.tanggal).replace(/20\d\d/g, '')}</td>
+                <td className="border border-black py-1 px-1 text-center">{item.masuk > 0 ? (item.noBukti || '-') : '-'}</td>
+                <td className="border border-black py-1 px-1 text-center">{item.keluar > 0 ? (item.noBukti || '-') : '-'}</td>
+                <td className="border border-black py-1 px-1 text-center">{item.masuk > 0 ? (item.kodeMA || '-') : '-'}</td>
+                <td className="border border-black py-1 px-1 text-center">{item.keluar > 0 ? (item.kodeMA || '-') : '-'}</td>
                 <td className="border border-black py-1 px-1">{item.uraianTampil}</td>
-                <td className="border border-black py-1 px-1 text-right">{item.masuk > 0 ? formatRupiah(item.masuk) : ''}</td>
-                <td className="border border-black py-1 px-1 text-right">{item.keluar > 0 ? formatRupiah(item.keluar) : ''}</td>
+                <td className="border border-black py-1 px-1 text-right">{item.masuk > 0 ? formatRupiah(item.masuk) : '-'}</td>
+                <td className="border border-black py-1 px-1 text-right">{item.keluar > 0 ? formatRupiah(item.keluar) : '-'}</td>
                 <td className="border border-black py-1 px-1 text-right font-semibold">{formatRupiah(item.saldoSaatIni)}</td>
               </tr>
             ))}

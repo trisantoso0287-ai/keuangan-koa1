@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 function BukuPenerimaan() {
@@ -12,7 +12,8 @@ function BukuPenerimaan() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'transaksi'), orderBy('tanggal', 'asc'));
+    // Menghapus orderBy 'tanggal' di Firestore query agar bisa kita sort manual berdasarkan jemaat & kategori
+    const q = query(collection(db, 'transaksi'));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       let daftarTerima = [];
@@ -24,7 +25,6 @@ function BukuPenerimaan() {
         if (jenis.includes('terima') || jenis.includes('pendapatan') || jenis.includes('masuk')) {
           const jumlah = Number(data.jumlah || data.nominal || data.total) || 0;
           
-          // PERUBAHAN: Menarik data dari field "kategori"
           const rawKategori = data.kategori || data.keterangan || '';
           const cleanKategori = String(rawKategori).replace(/^[A-Za-z0-9]+\s*-\s*/, '').trim();
           const jemaat = data.jemaat || data.namaJemaat || data.penyetor || '';
@@ -34,6 +34,8 @@ function BukuPenerimaan() {
           daftarTerima.push({
             id: doc.id,
             ...data,
+            jemaatAcu: jemaat.toLowerCase(), // Tambahan untuk mempermudah sorting
+            kategoriAcu: (data.kategori || '').toLowerCase(), // Tambahan untuk mempermudah sorting
             jumlahTerima: jumlah,
             uraianTampil: uraianLengkap || '-'
           });
@@ -55,7 +57,21 @@ function BukuPenerimaan() {
   };
 
   const namaBulanCetak = new Date(filterBulan + '-01').toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
-  const penerimaanTampil = semuaPenerimaan.filter(t => t.tanggal && t.tanggal.startsWith(filterBulan));
+  
+  // 1. Filter transaksi berdasarkan bulan
+  // 2. Sort berdasarkan Jemaat (A-Z), lalu berdasarkan Kategori MA (A-Z)
+  const penerimaanTampil = semuaPenerimaan
+    .filter(t => t.tanggal && t.tanggal.startsWith(filterBulan))
+    .sort((a, b) => {
+       if (a.jemaatAcu < b.jemaatAcu) return -1;
+       if (a.jemaatAcu > b.jemaatAcu) return 1;
+       
+       if (a.kategoriAcu < b.kategoriAcu) return -1;
+       if (a.kategoriAcu > b.kategoriAcu) return 1;
+       
+       return 0;
+    });
+
   const totalBulanIni = penerimaanTampil.reduce((acc, curr) => acc + curr.jumlahTerima, 0);
 
   if (loading) return <div className="text-center p-8 text-slate-500">Memuat Data Buku Penerimaan...</div>;
@@ -68,7 +84,7 @@ function BukuPenerimaan() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-5 rounded-xl shadow-sm border border-slate-200 gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-800">Buku Penerimaan</h2>
-            <p className="text-sm text-slate-500">Khusus rincian arus kas masuk per bulan</p>
+            <p className="text-sm text-slate-500">Diurutkan berdasarkan Mata Jemaat & Mata Anggaran</p>
           </div>
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <input 
@@ -121,7 +137,7 @@ function BukuPenerimaan() {
             <table className="text-left">
               <tbody>
                 <tr><td className="pr-4 py-0.5">Jemaat</td><td>: GMIT KOA I</td></tr>
-                <tr><td className="pr-4 py-0.5">Mata Jemaat</td><td>: Imanuel Koa</td></tr>
+                <tr><td className="pr-4 py-0.5">Mata Jemaat</td><td>: ....................</td></tr>
                 <tr><td className="pr-4 py-0.5">Bulan</td><td>: {namaBulanCetak.split(' ')[0]} {namaBulanCetak.split(' ')[1]}</td></tr>
               </tbody>
             </table>
