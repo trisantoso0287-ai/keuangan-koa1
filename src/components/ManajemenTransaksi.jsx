@@ -91,8 +91,17 @@ const ManajemenTransaksi = () => {
 
         return true;
       })
-      // Urutkan tanggal terbaru di atas
-      .sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+      // Urutkan tanggal terbaru di atas, dan jika tanggal sama, urutkan berdasarkan waktu input terbaru
+      .sort((a, b) => {
+        const dateDiff = new Date(b.tanggal) - new Date(a.tanggal);
+        if (dateDiff !== 0) return dateDiff;
+        
+        // Fallback ke waktuUpdate jika ada transaksi di tanggal yang sama
+        const timeA = a.waktuUpdate?.seconds ? a.waktuUpdate.seconds : (new Date(a.waktuUpdate).getTime() || 0);
+        const timeB = b.waktuUpdate?.seconds ? b.waktuUpdate.seconds : (new Date(b.waktuUpdate).getTime() || 0);
+        
+        return timeB - timeA;
+      });
   }, [riwayatTransaksi, activeMonth, filterJenis, filterJemaat, filterKategori]);
 
   const formatTanggalIndo = (tanggalString) => {
@@ -131,12 +140,12 @@ const ManajemenTransaksi = () => {
           kategori: cols[3].trim(),
           nominal: nominalMurni,
           keterangan: cols[5] ? cols[5].trim() : '',
-          waktuUpdate: new Date()
+          waktuUpdate: new Date() // Pastikan field ini selalu terkirim
         };
         try {
           await addDoc(collection(db, "transaksi"), dataBaru);
           berhasil++;
-        } catch (error) { console.error(error); }
+        } catch (error) { console.error("Error import row:", error); }
       }
     }
     alert(`IMPOR SELESAI: ${berhasil} data transaksi berhasil diintegrasikan ke database!`);
@@ -196,15 +205,15 @@ const ManajemenTransaksi = () => {
           <p className="text-sm text-slate-500 mt-1">Kelola, saring, dan navigasikan data per bulan.</p>
         </div>
         <div className="relative">
-          <button onClick={() => setIsDropdownMenuOpen(!isDropdownMenuOpen)} className="bg-slate-100 text-slate-700 px-4 py-2 rounded-md text-sm font-bold hover:bg-slate-200 flex items-center gap-2">
+          <button onClick={() => setIsDropdownMenuOpen(!isDropdownMenuOpen)} className="bg-slate-100 text-slate-700 px-4 py-2 rounded-md text-sm font-bold hover:bg-slate-200 flex items-center gap-2 transition-colors">
             Opsi Lanjutan
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
           </button>
           {isDropdownMenuOpen && (
             <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-md shadow-xl z-20 flex flex-col overflow-hidden">
               <button onClick={() => setIsModalImportOpen(true)} className="text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 flex items-center gap-2 text-emerald-700">📥 Impor Excel</button>
-              <button onClick={unduhTemplateExcel} className="text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 flex items-center gap-2 text-blue-700 border-t border-slate-100">📋 Unduh Template</button>
-              <button onClick={handleHapusSemua} className="text-left px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-slate-100">🗑️ Hapus Semua Data</button>
+              <button onClick={unduhTemplateExcel} className="text-left px-4 py-3 text-sm font-semibold hover:bg-slate-50 flex items-center gap-2 text-blue-700 border-t border-slate-100">📄 Unduh Template</button>
+              <button onClick={handleHapusSemua} className="text-left px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-slate-100">⚠️ Hapus Semua Data</button>
             </div>
           )}
         </div>
@@ -236,19 +245,19 @@ const ManajemenTransaksi = () => {
 
         {/* Baris Filter */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <select value={filterJenis} onChange={(e) => setFilterJenis(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700">
+          <select value={filterJenis} onChange={(e) => setFilterJenis(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 cursor-pointer">
             <option value="">Semua Jenis (Masuk & Keluar)</option>
             <option value="pendapatan">Hanya Pendapatan</option>
             <option value="pengeluaran">Hanya Pengeluaran</option>
           </select>
           
-          <select value={filterJemaat} onChange={(e) => setFilterJemaat(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700">
+          <select value={filterJemaat} onChange={(e) => setFilterJemaat(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 cursor-pointer">
             <option value="">Semua Wilayah / Jemaat</option>
             <option value="koa">Imanuel Koa</option>
             <option value="haususu">Syalom Haususu</option>
           </select>
 
-          <select value={filterKategori} onChange={(e) => setFilterKategori(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700">
+          <select value={filterKategori} onChange={(e) => setFilterKategori(e.target.value)} className="w-full p-2 border border-slate-300 rounded-md outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 cursor-pointer">
             <option value="">Semua Kategori (A, C, D, E)</option>
             <option value="A">Kategori A - (Penerimaan)</option>
             <option value="C">Kategori C - (Pengeluaran)</option>
@@ -278,7 +287,7 @@ const ManajemenTransaksi = () => {
                   <td className="p-3 capitalize">{trx.jemaat || '-'}</td>
                   <td className="p-3">
                     <span className="font-semibold">{trx.kategori}</span>
-                    {trx.keterangan && <span className="text-slate-500 block text-xs mt-0.5">{trx.keterangan}</span>}
+                    {trx.keterangan && <span className="text-slate-500 block text-xs mt-0.5 whitespace-normal">{trx.keterangan}</span>}
                   </td>
                   <td className={`p-3 text-right font-bold ${trx.jenis === 'pendapatan' ? 'text-emerald-600' : 'text-red-600'}`}>
                     {trx.jenis === 'pendapatan' ? '+' : '-'} Rp {trx.nominal.toLocaleString('id-ID')}
@@ -346,10 +355,10 @@ const ManajemenTransaksi = () => {
             <h3 className="font-bold text-slate-800 mb-1 text-center">Opsi Transaksi</h3>
             <p className="text-xs text-slate-500 text-center mb-6">{mobileTrx.kategori} ({mobileTrx.nominal.toLocaleString('id-ID')})</p>
             
-            <button onClick={() => { setSelectedTrx(mobileTrx); setIsFormOpen(true); setMobileTrx(null); }} className="w-full bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold py-3 rounded-lg mb-3 transition-colors">
+            <button onClick={() => { setSelectedTrx(mobileTrx); setIsFormOpen(true); setMobileTrx(null); }} className="w-full bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold py-3 rounded-lg mb-3 transition-colors flex items-center justify-center gap-2">
               ✏️ Edit Data
             </button>
-            <button onClick={() => { handleHapusTransaksi(mobileTrx.id); setMobileTrx(null); }} className="w-full bg-red-50 text-red-700 hover:bg-red-100 font-bold py-3 rounded-lg mb-3 transition-colors">
+            <button onClick={() => { handleHapusTransaksi(mobileTrx.id); setMobileTrx(null); }} className="w-full bg-red-50 text-red-700 hover:bg-red-100 font-bold py-3 rounded-lg mb-3 transition-colors flex items-center justify-center gap-2">
               🗑️ Hapus Data
             </button>
             <button onClick={() => setMobileTrx(null)} className="w-full bg-slate-100 text-slate-600 font-bold py-3 rounded-lg hover:bg-slate-200 transition-colors">
@@ -371,8 +380,8 @@ const ManajemenTransaksi = () => {
               <textarea rows="8" className="w-full p-3 border-2 border-emerald-300 rounded font-mono text-sm whitespace-pre" placeholder="Paste data transaksi dari Excel Anda di sini..." value={pastedData} onChange={(e) => setPastedData(e.target.value)}></textarea>
             </div>
             <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-lg">
-              <button onClick={() => setIsModalImportOpen(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded">Batal</button>
-              <button onClick={prosesDataExcel} className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded">Proses Data</button>
+              <button onClick={() => setIsModalImportOpen(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded transition-colors">Batal</button>
+              <button onClick={prosesDataExcel} className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded transition-colors">Proses Data</button>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, onSnapshot, query } from 'firebase/firestore';
-import { db } from '../firebaseConfig'; // Pastikan path ini benar
+import { db } from '../firebaseConfig'; 
 
 const TransactionForm = ({ onClose, initialData }) => {
   // 1. State Form Input
@@ -52,9 +52,16 @@ const TransactionForm = ({ onClose, initialData }) => {
     return () => unsubscribe();
   }, []);
 
-  // 5. Handler Perubahan Input
+  // 5. Handler Perubahan Input Standar
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    
+    // Jika jemaat diubah, reset kategori agar user terpaksa memilih ulang MA yang sesuai jemaat
+    if (name === 'jemaat') {
+      setFormData({ ...formData, [name]: value, kategori: '' });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   // Handler Khusus untuk Radio Button Jenis (Penerimaan / Pengeluaran)
@@ -70,7 +77,7 @@ const TransactionForm = ({ onClose, initialData }) => {
     });
   };
 
-// Fungsi untuk memformat angka menjadi format ribuan (150.000)
+  // Fungsi untuk memformat angka menjadi format ribuan (150.000)
   const formatRibuan = (angka) => {
     if (!angka) return '';
     return Number(angka).toLocaleString('id-ID');
@@ -94,8 +101,9 @@ const TransactionForm = ({ onClose, initialData }) => {
 
     const dataKirim = {
       ...formData,
-      nominal: Number(formData.nominal), // Pastikan nominal bertipe angka di database
-      waktuUpdate: new Date()
+      nominal: Number(formData.nominal), 
+      // PERBAIKAN: Gunakan waktu lama jika sedang Edit, gunakan waktu baru jika Tambah Data
+      waktuUpdate: initialData?.waktuUpdate ? initialData.waktuUpdate : new Date()
     };
 
     try {
@@ -103,11 +111,12 @@ const TransactionForm = ({ onClose, initialData }) => {
         // MODE EDIT: Perbarui dokumen yang sudah ada
         const docRef = doc(db, "transaksi", initialData.id);
         await updateDoc(docRef, dataKirim);
-        alert("Perubahan transaksi berhasil disimpan!");
+        // Tampilkan pesan sukses ringan (opsional: bisa dihapus jika dirasa mengganggu)
+        // alert("Perubahan transaksi berhasil disimpan!");
       } else {
         // MODE TAMBAH BARU: Buat dokumen baru
         await addDoc(collection(db, "transaksi"), dataKirim);
-        alert("Transaksi baru berhasil ditambahkan!");
+        // alert("Transaksi baru berhasil ditambahkan!");
       }
       onClose(); // Tutup form setelah berhasil
     } catch (error) {
@@ -123,7 +132,7 @@ const TransactionForm = ({ onClose, initialData }) => {
           <h3 className="font-bold text-lg text-blue-900">
             {initialData ? "Edit Transaksi" : "Input Transaksi Baru"}
           </h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-red-500 font-bold text-xl">&times;</button>
+          <button onClick={onClose} className="text-slate-500 hover:text-red-500 font-bold text-2xl leading-none">&times;</button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 flex flex-col gap-4">
@@ -145,14 +154,14 @@ const TransactionForm = ({ onClose, initialData }) => {
           {/* BARIS TANGGAL */}
           <div className="flex flex-col">
             <label className="text-sm font-bold text-slate-700 mb-1">Tanggal Transaksi</label>
-            <input type="date" name="tanggal" value={formData.tanggal} onChange={handleChange} className="p-2 border rounded bg-slate-50" required />
+            <input type="date" name="tanggal" value={formData.tanggal} onChange={handleChange} className="p-2 border rounded bg-slate-50 cursor-pointer" required />
           </div>
 
           {/* BARIS JEMAAT (HANYA TAMPIL JIKA PENERIMAAN) */}
           {formData.jenis === 'pendapatan' && (
-            <div className="flex flex-col">
+            <div className="flex flex-col animate-fade-in">
               <label className="text-sm font-bold text-slate-700 mb-1">Mata Jemaat</label>
-              <select name="jemaat" value={formData.jemaat} onChange={handleChange} className="p-2 border rounded bg-white">
+              <select name="jemaat" value={formData.jemaat} onChange={handleChange} className="p-2 border rounded bg-white cursor-pointer">
                 <option value="">-- Pilih Mata Jemaat --</option>
                 <option value="Imanuel Koa">Imanuel Koa</option>
                 <option value="Syalom Haususu">Syalom Haususu</option>
@@ -163,7 +172,7 @@ const TransactionForm = ({ onClose, initialData }) => {
           {/* BARIS KATEGORI (MATA ANGGARAN) */}
           <div className="flex flex-col">
             <label className="text-sm font-bold text-slate-700 mb-1">Kategori (Mata Anggaran)</label>
-            <select name="kategori" value={formData.kategori} onChange={handleChange} className="p-2 border rounded bg-white" required>
+            <select name="kategori" value={formData.kategori} onChange={handleChange} className="p-2 border rounded bg-white cursor-pointer" required>
               <option value="">-- Pilih Mata Anggaran --</option>
               
               {formData.jenis === 'pendapatan' 
@@ -188,12 +197,12 @@ const TransactionForm = ({ onClose, initialData }) => {
           <div className="flex flex-col">
             <label className="text-sm font-bold text-slate-700 mb-1">Nominal (Rp)</label>
             <input 
-              type="text" // Diubah dari number menjadi text agar bisa diformat
+              type="text" 
               name="nominal" 
               value={formatRibuan(formData.nominal)} 
               onChange={handleNominalChange} 
               placeholder="Contoh: 150.000" 
-              className="p-2 border rounded font-semibold text-slate-800" 
+              className="p-2 border rounded font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition-shadow" 
               required 
             />
           </div>
@@ -201,15 +210,15 @@ const TransactionForm = ({ onClose, initialData }) => {
           {/* BARIS KETERANGAN */}
           <div className="flex flex-col">
             <label className="text-sm font-bold text-slate-700 mb-1">Keterangan / Uraian</label>
-            <textarea name="keterangan" value={formData.keterangan} onChange={handleChange} rows="2" placeholder="Tulis rincian singkat..." className="p-2 border rounded"></textarea>
+            <textarea name="keterangan" value={formData.keterangan} onChange={handleChange} rows="2" placeholder="Tulis rincian singkat..." className="p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"></textarea>
           </div>
 
           {/* TOMBOL SIMPAN */}
-          <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-            <button type="button" onClick={onClose} className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded">
+          <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
+            <button type="button" onClick={onClose} className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded transition-colors">
               Batal
             </button>
-            <button type="submit" className="px-4 py-2 font-bold text-white bg-blue-800 hover:bg-blue-900 rounded shadow-sm">
+            <button type="submit" className="px-4 py-2 font-bold text-white bg-blue-800 hover:bg-blue-900 rounded shadow-sm transition-colors">
               {initialData ? "Simpan Perubahan" : "Simpan Transaksi"}
             </button>
           </div>
